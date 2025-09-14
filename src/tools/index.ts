@@ -13,10 +13,25 @@ import { requestApprovalTool, requestApprovalHandler } from './request-approval.
 import { getApprovalStatusTool, getApprovalStatusHandler } from './get-approval-status.js';
 import { deleteApprovalTool, deleteApprovalHandler } from './delete-approval.js';
 import { refreshTasksTool, refreshTasksHandler } from './refresh-tasks.js';
+// Parallel execution tools
+import { initProjectTool, initProjectHandler } from './init-project.js';
+import { getParallelStatusTool, getParallelStatusHandler } from './get-parallel-status.js';
+import { analyzeParallelTool, analyzeParallelHandler } from './analyze-parallel.js';
+import { executeParallelTool, executeParallelHandler } from './execute-parallel.js';
+import { runAgentTool, runAgentHandler } from './run-agent.js';
+// Git Worktree management tools (Phase 4)
+import { createWorktreeTool, createWorktreeHandler } from './create-worktree.js';
+import { manageWorktreeTool, manageWorktreeHandler } from './manage-worktree.js';
+import { consolidateWorktreesTool, consolidateWorktreesHandler } from './consolidate-worktrees.js';
+import { destroyWorktreeTool, destroyWorktreeHandler } from './destroy-worktree.js';
+// Advanced monitoring and agent management tools
+import { executionMonitorTool, executionMonitorHandler } from './execution-monitor.js';
+import { manageAgentsTool, manageAgentsHandler } from './manage-agents.js';
 import { ToolContext, ToolResponse, MCPToolResponse, toMCPResponse } from '../types.js';
 
 export function registerTools(): Tool[] {
   return [
+    // Original Spec Workflow tools
     specWorkflowGuideTool,
     steeringGuideTool,
     createSpecDocTool,
@@ -30,7 +45,21 @@ export function registerTools(): Tool[] {
     requestApprovalTool,
     getApprovalStatusTool,
     deleteApprovalTool,
-    refreshTasksTool
+    refreshTasksTool,
+    // Parallel execution tools
+    initProjectTool,
+    getParallelStatusTool,
+    analyzeParallelTool,
+    executeParallelTool,
+    runAgentTool,
+    // Git Worktree management tools (Phase 4)
+    createWorktreeTool,
+    manageWorktreeTool,
+    consolidateWorktreesTool,
+    destroyWorktreeTool,
+    // Advanced monitoring and agent management tools
+    executionMonitorTool,
+    manageAgentsTool
   ];
 }
 
@@ -81,6 +110,42 @@ export async function handleToolCall(name: string, args: any, context: ToolConte
         break;
       case 'refresh-tasks':
         response = await refreshTasksHandler(args, context);
+        break;
+      // Parallel execution tool handlers
+      case 'init_project':
+        response = await initProjectHandler(args, context);
+        break;
+      case 'get-parallel-status':
+        response = await getParallelStatusHandler(args, context);
+        break;
+      case 'analyze-parallel':
+        response = await analyzeParallelHandler(args, context);
+        break;
+      case 'execute-parallel':
+        response = await executeParallelHandler(args, context);
+        break;
+      case 'run-agent':
+        response = await runAgentHandler(args, context);
+        break;
+      // Git Worktree management tool handlers (Phase 4)
+      case 'create-worktree':
+        response = await createWorktreeHandler(args, context);
+        break;
+      case 'manage-worktree':
+        response = await manageWorktreeHandler(args, context);
+        break;
+      case 'consolidate-worktrees':
+        response = await consolidateWorktreesHandler(args, context);
+        break;
+      case 'destroy-worktree':
+        response = await destroyWorktreeHandler(args, context);
+        break;
+      // Advanced monitoring and agent management tool handlers
+      case 'execution-monitor':
+        response = await executionMonitorHandler(args, context);
+        break;
+      case 'manage-agents':
+        response = await manageAgentsHandler(args, context);
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);

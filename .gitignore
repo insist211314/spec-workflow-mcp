@@ -135,8 +135,35 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-# AI
-CLAUDE.md
+# AI temp files (keep CLAUDE.md as it's project documentation)
 .claude
 .serena
 AGENTS.md
+
+# Project-specific temp files
+.spec-workflow/session.json
+.spec-workflow/temp/
+
+# VSCode Extension build output
+vscode-extension/webview-dist/
+vscode-extension/out/
+vscode-extension/dist/
+*.vsix
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

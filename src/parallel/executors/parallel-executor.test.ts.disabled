@@ -1,0 +1,483 @@
+/**
+ * Unit tests for parallel executor
+ * Run with: npx tsx src/parallel/executors/parallel-executor.test.ts
+ */
+
+import { ParallelExecutor, IsolatedTaskContext, ExecutionQueue } from './parallel-executor.js';
+import { ParallelTaskInfo, TaskState } from '../types.js';
+import { ParallelConfig } from '../config/parallel-config.js';
+import { BaseAgent } from '../agents/base-agent.js';
+
+// Simple test framework
+class TestRunner {
+  private tests: Array<{ name: string; fn: () => Promise<void> }> = [];
+  private passed = 0;
+  private failed = 0;
+
+  test(name: string, fn: () => Promise<void>) {
+    this.tests.push({ name, fn });
+  }
+
+  async run() {
+    console.log('🧪 Running Parallel Executor Tests\n');
+
+    for (const test of this.tests) {
+      try {
+        await test.fn();
+        console.log(`✅ ${test.name}`);
+        this.passed++;
+      } catch (error) {
+        console.log(`❌ ${test.name}`);
+        console.error(`   ${error}`);
+        this.failed++;
+      }
+    }
+
+    console.log(`\n📊 Results: ${this.passed} passed, ${this.failed} failed`);
+    return this.failed === 0;
+  }
+}
+
+// Test utilities
+function assert(condition: boolean, message: string) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertEquals(actual: any, expected: any, message?: string) {
+  if (actual !== expected) {
+    throw new Error(message || `Expected ${expected} but got ${actual}`);
+  }
+}
+
+// Helper function to create test config
+function createTestConfig(overrides: Partial<ParallelConfig> = {}): ParallelConfig {
+  return {
+    mode: 'turbo',
+    maxParallelTasks: 2,
+    enableSuggestions: true,
+    agentTimeout: 30000,
+    enableDependencyAnalysis: true,
+    strictIndependence: false,
+    dashboard: { enabled: false },
+    agents: [],
+    ...overrides
+  };
+}
+
+// Mock agent for testing
+class MockAgent extends BaseAgent {
+  private shouldSucceed: boolean;
+  private executionTime: number;
+
+  constructor(shouldSucceed: boolean = true, executionTime: number = 100) {
+    super();
+    this.shouldSucceed = shouldSucceed;
+    this.executionTime = executionTime;
+  }
+
+  async execute(context: any): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, this.executionTime));
+
+    return {
+      success: this.shouldSucceed,
+      data: this.shouldSucceed ? 'Mock task completed successfully' : '',
+      error: this.shouldSucceed ? undefined : 'Mock task failed'
+    };
+  }
+
+  getName(): string {
+    return 'MockAgent';
+  }
+
+  getCapabilities(): any[] {
+    return [{ name: 'test', description: 'Test capability' }];
+  }
+}
+
+// Create test suite
+const runner = new TestRunner();
+
+// Test 1: IsolatedTaskContext
+runner.test('should create isolated task context', async () => {
+  const context = new IsolatedTaskContext('task-1', '/tmp/test');
+
+  assertEquals(context.getTaskId(), 'task-1');
+  assertEquals(context.getWorkingDirectory(), '/tmp/test/.parallel-tasks/task-1');
+  assertEquals(context.getState(), TaskState.PENDING);
+
+  context.setEnvironmentVariable('TEST_VAR', 'test-value');
+  assertEquals(context.getEnvironmentVariable('TEST_VAR'), 'test-value');
+
+  const allocated = context.allocateResource('database');
+  assertEquals(allocated, true);
+  assertEquals(context.getAllocatedResources().includes('database'), true);
+
+  const allocatedAgain = context.allocateResource('database');
+  assertEquals(allocatedAgain, false);
+
+  context.releaseResource('database');
+  assertEquals(context.getAllocatedResources().includes('database'), false);
+
+  context.cleanup();
+  assertEquals(context.getAllocatedResources().length, 0);
+});
+
+// Test 2: ExecutionQueue
+runner.test('should manage execution queue correctly', async () => {
+  const queue = new ExecutionQueue(2);
+
+  const task1: ParallelTaskInfo = {
+    id: '1',
+    description: 'Task 1',
+    parallelSafe: true,
+    dependencies: [],
+    completed: false
+  };
+
+  const task2: ParallelTaskInfo = {
+    id: '2',
+    description: 'Task 2',
+    parallelSafe: true,
+    dependencies: ['1'],
+    completed: false
+  };
+
+  queue.addTask(task1);
+  queue.addTask(task2);
+
+  assertEquals(queue.canExecuteMore(), true);
+  assertEquals(queue.getRunningTaskCount(), 0);
+
+  const nextTask = queue.getNextExecutableTask();
+  assertEquals(nextTask?.id, '1');
+
+  // Simulate starting task 1
+  const mockPromise = Promise.resolve({
+    taskId: '1',
+    success: true,
+    output: 'completed',
+    duration: 1000,
+    resources: []
+  });
+  queue.startTask('1', mockPromise);
+
+  // Complete task 1
+  queue.completeTask('1', {
+    taskId: '1',
+    success: true,
+    output: 'completed',
+    duration: 1000,
+    resources: []
+  });
+
+  assertEquals(queue.getCompletedTasks().size, 1);
+  assertEquals(queue.getFailedTasks().size, 0);
+
+  const nextTask2 = queue.getNextExecutableTask();
+  assertEquals(nextTask2?.id, '2');
+
+  queue.clear();
+  assertEquals(queue.getCompletedTasks().size, 0);
+});
+
+// Test 3: ParallelExecutor creation
+runner.test('should create parallel executor with config', async () => {
+  const config = createTestConfig();
+
+  const executor = new ParallelExecutor(config);
+
+  // Register mock agent
+  const mockAgent = new MockAgent();
+  executor.registerAgent('mock', mockAgent);
+
+  assertEquals(executor.isExecuting(), false);
+
+  const status = executor.getExecutionStatus();
+  assertEquals(status.running, 0);
+  assertEquals(status.completed, 0);
+  assertEquals(status.failed, 0);
+  assertEquals(status.pending, 0);
+});
+
+// Test 4: Create execution plan
+runner.test('should create execution plan', async () => {
+  const config = createTestConfig({ maxParallelTasks: 3 });
+
+  const executor = new ParallelExecutor(config);
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'Independent task 1',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false,
+      estimatedDuration: 1000
+    },
+    {
+      id: '2',
+      description: 'Independent task 2',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false,
+      estimatedDuration: 1500
+    },
+    {
+      id: '3',
+      description: 'Dependent task',
+      parallelSafe: false,
+      dependencies: ['1', '2'],
+      completed: false,
+      estimatedDuration: 2000
+    }
+  ];
+
+  const plan = await executor.createExecutionPlan(tasks);
+
+  assertEquals(plan.executionGroups.length >= 2, true);
+  assertEquals(plan.maxParallelism >= 2, true);
+  assertEquals(plan.riskLevel, 'low');
+  assert(plan.estimatedDuration > 0, 'Should have estimated duration');
+});
+
+// Test 5: Sequential execution
+runner.test('should execute tasks sequentially in classic mode', async () => {
+  const config = createTestConfig({
+    mode: 'classic',
+    maxParallelTasks: 1,
+    enableSuggestions: false
+  });
+
+  const executor = new ParallelExecutor(config);
+  const mockAgent = new MockAgent(true, 50);
+  executor.registerAgent('mock', mockAgent);
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'test Task 1',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    },
+    {
+      id: '2',
+      description: 'test Task 2',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    }
+  ];
+
+  const startTime = Date.now();
+  const results = await executor.executeParallel(tasks, '/tmp/test');
+  const duration = Date.now() - startTime;
+
+  assertEquals(results.length, 2);
+  assertEquals(results.every(r => r.success), true);
+  assert(duration >= 100, 'Sequential execution should take at least 100ms'); // 2 tasks * 50ms each
+});
+
+// Test 6: Parallel execution
+runner.test('should execute independent tasks in parallel', async () => {
+  const config = createTestConfig({
+    maxParallelTasks: 3,
+    enableSuggestions: false
+  });
+
+  const executor = new ParallelExecutor(config);
+  const mockAgent = new MockAgent(true, 100);
+  executor.registerAgent('mock', mockAgent);
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'test Independent task 1',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    },
+    {
+      id: '2',
+      description: 'test Independent task 2',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    }
+  ];
+
+  const startTime = Date.now();
+  const results = await executor.executeParallel(tasks, '/tmp/test');
+  const duration = Date.now() - startTime;
+
+  assertEquals(results.length, 2);
+  assertEquals(results.every(r => r.success), true);
+  assert(duration < 200, 'Parallel execution should be faster than sequential'); // Should be ~100ms not 200ms
+});
+
+// Test 7: Handle task failure
+runner.test('should handle task failures', async () => {
+  const config = createTestConfig({
+    enableSuggestions: false
+  });
+
+  const executor = new ParallelExecutor(config);
+  const successAgent = new MockAgent(true, 50);
+  const failAgent = new MockAgent(false, 50);
+  executor.registerAgent('success', successAgent);
+  executor.registerAgent('fail', failAgent);
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'success Task 1',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    },
+    {
+      id: '2',
+      description: 'fail Task 2',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    }
+  ];
+
+  const results = await executor.executeParallel(tasks, '/tmp/test');
+
+  assertEquals(results.length, 2);
+  assertEquals(results.filter(r => r.success).length, 1);
+  assertEquals(results.filter(r => !r.success).length, 1);
+
+  const failedResult = results.find(r => !r.success);
+  assert(failedResult?.error?.includes('Mock task failed'), 'Should contain error message');
+});
+
+// Test 8: Resource conflict handling
+runner.test('should handle resource conflicts', async () => {
+  const config = createTestConfig({
+    maxParallelTasks: 3,
+    enableSuggestions: false
+  });
+
+  const executor = new ParallelExecutor(config);
+  const mockAgent = new MockAgent(true, 100);
+  executor.registerAgent('mock', mockAgent);
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'test Task with database',
+      parallelSafe: true,
+      dependencies: [],
+      resources: ['database'],
+      completed: false
+    },
+    {
+      id: '2',
+      description: 'test Task with database conflict',
+      parallelSafe: true,
+      dependencies: [],
+      resources: ['database'],
+      completed: false
+    }
+  ];
+
+  const startTime = Date.now();
+  const results = await executor.executeParallel(tasks, '/tmp/test');
+  const duration = Date.now() - startTime;
+
+  assertEquals(results.length, 2);
+  assertEquals(results.every(r => r.success), true);
+
+  // Should execute sequentially due to resource conflict
+  assert(duration >= 200, 'Should execute sequentially due to resource conflict');
+});
+
+// Test 9: Dependency execution order
+runner.test('should respect task dependencies', async () => {
+  const config = createTestConfig({
+    maxParallelTasks: 3,
+    enableSuggestions: false
+  });
+
+  const executor = new ParallelExecutor(config);
+  const mockAgent = new MockAgent(true, 50);
+  executor.registerAgent('mock', mockAgent);
+
+  const executionOrder: string[] = [];
+
+  // Override execute to track execution order
+  const originalExecute = mockAgent.execute.bind(mockAgent);
+  mockAgent.execute = async function(context: any) {
+    const taskId = context.tasks && context.tasks[0] ? context.tasks[0].id : 'unknown';
+    executionOrder.push(taskId);
+    return originalExecute(context);
+  };
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'test First task',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    },
+    {
+      id: '2',
+      description: 'test Second task (depends on 1)',
+      parallelSafe: false,
+      dependencies: ['1'],
+      completed: false
+    }
+  ];
+
+  const results = await executor.executeParallel(tasks, '/tmp/test');
+
+  assertEquals(results.length, 2);
+  assertEquals(results.every(r => r.success), true);
+  assertEquals(executionOrder[0], '1');
+  assertEquals(executionOrder[1], '2');
+});
+
+// Test 10: Stop execution
+runner.test('should stop execution gracefully', async () => {
+  const config = createTestConfig({
+    enableSuggestions: false
+  });
+
+  const executor = new ParallelExecutor(config);
+  const mockAgent = new MockAgent(true, 1000); // Long running task
+  executor.registerAgent('mock', mockAgent);
+
+  const tasks: ParallelTaskInfo[] = [
+    {
+      id: '1',
+      description: 'test Long running task',
+      parallelSafe: true,
+      dependencies: [],
+      completed: false
+    }
+  ];
+
+  // Start execution but don't await
+  const executionPromise = executor.executeParallel(tasks, '/tmp/test');
+
+  // Wait a bit then stop
+  setTimeout(async () => {
+    await executor.stop();
+  }, 200);
+
+  const results = await executionPromise;
+
+  // Should stop execution gracefully
+  assertEquals(executor.isExecuting(), false);
+});
+
+// Run all tests
+runner.run().then(success => {
+  process.exit(success ? 0 : 1);
+});

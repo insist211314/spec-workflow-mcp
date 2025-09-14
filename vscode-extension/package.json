@@ -3,12 +3,12 @@
   "displayName": "%displayName%",
   "description": "%description%",
   "version": "0.0.11",
-  "publisher": "Pimzino",
+  "publisher": "insist211314",
   "license": "GPL-3.0",
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Pimzino/spec-workflow-mcp.git"
+    "url": "https://github.com/insist211314/spec-workflow-mcp.git"
   },
   "engines": {
     "vscode": "^1.99.0"

@@ -1,0 +1,123 @@
+/**
+ * Tests for parallel configuration module
+ */
+
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import { ParallelConfigManager, defaultParallelConfig } from './parallel-config.js';
+
+describe('ParallelConfigManager', () => {
+  let configManager: ParallelConfigManager;
+
+  beforeEach(() => {
+    configManager = new ParallelConfigManager();
+  });
+
+  describe('initialization', () => {
+    it('should initialize with default config', () => {
+      const config = configManager.getConfig();
+      expect(config.mode).toBe('classic');
+      expect(config.maxParallelTasks).toBe(3);
+      expect(config.enableSuggestions).toBe(true);
+    });
+
+    it('should accept partial config on initialization', () => {
+      const customManager = new ParallelConfigManager({
+        mode: 'turbo',
+        maxParallelTasks: 2
+      });
+      const config = customManager.getConfig();
+      expect(config.mode).toBe('turbo');
+      expect(config.maxParallelTasks).toBe(2);
+      expect(config.enableSuggestions).toBe(true); // default value
+    });
+  });
+
+  describe('config management', () => {
+    it('should update config', () => {
+      configManager.updateConfig({ mode: 'turbo' });
+      const config = configManager.getConfig();
+      expect(config.mode).toBe('turbo');
+    });
+
+    it('should check if parallel is enabled', () => {
+      expect(configManager.isParallelEnabled()).toBe(false);
+      configManager.updateConfig({ mode: 'turbo' });
+      expect(configManager.isParallelEnabled()).toBe(true);
+    });
+
+    it('should enforce max parallel tasks limit of 3', () => {
+      configManager.updateConfig({ maxParallelTasks: 5 });
+      expect(configManager.getMaxParallelTasks()).toBe(3);
+    });
+
+    it('should return frozen config', () => {
+      const config = configManager.getConfig();
+      expect(() => {
+        (config as any).mode = 'turbo';
+      }).toThrow();
+    });
+  });
+
+  describe('validation', () => {
+    it('should validate valid config', () => {
+      const validation = configManager.validateConfig();
+      expect(validation.valid).toBe(true);
+      expect(validation.errors).toHaveLength(0);
+    });
+
+    it('should validate maxParallelTasks bounds', () => {
+      configManager.updateConfig({ maxParallelTasks: 0 });
+      const validation = configManager.validateConfig();
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain('maxParallelTasks must be between 1 and 3');
+    });
+
+    it('should validate agent timeout', () => {
+      configManager.updateConfig({ agentTimeout: 500 });
+      const validation = configManager.validateConfig();
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain('agentTimeout must be at least 1000ms');
+    });
+  });
+
+  describe('export/import', () => {
+    it('should export config as JSON', () => {
+      const exported = configManager.exportConfig();
+      const parsed = JSON.parse(exported);
+      expect(parsed.mode).toBe('classic');
+    });
+
+    it('should import config from JSON', () => {
+      const configJson = JSON.stringify({
+        mode: 'turbo',
+        maxParallelTasks: 2
+      });
+      configManager.importConfig(configJson);
+      const config = configManager.getConfig();
+      expect(config.mode).toBe('turbo');
+      expect(config.maxParallelTasks).toBe(2);
+    });
+
+    it('should handle invalid JSON import', () => {
+      expect(() => {
+        configManager.importConfig('invalid json');
+      }).toThrow('Failed to import configuration');
+    });
+
+    it('should reset to defaults', () => {
+      configManager.updateConfig({ mode: 'turbo' });
+      configManager.resetToDefault();
+      const config = configManager.getConfig();
+      expect(config.mode).toBe('classic');
+    });
+  });
+
+  describe('feature flags', () => {
+    it('should check if features are enabled', () => {
+      expect(configManager.isFeatureEnabled('enableSuggestions')).toBe(true);
+      expect(configManager.isFeatureEnabled('enableDependencyAnalysis')).toBe(true);
+      configManager.updateConfig({ enableSuggestions: false });
+      expect(configManager.isFeatureEnabled('enableSuggestions')).toBe(false);
+    });
+  });
+});

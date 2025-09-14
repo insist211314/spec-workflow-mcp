@@ -1,12 +1,11 @@
 # Spec Workflow MCP
 
-[![npm version](https://img.shields.io/npm/v/@pimzino/spec-workflow-mcp)](https://www.npmjs.com/package/@pimzino/spec-workflow-mcp)
-[![VSCode Extension](https://badgen.net/vs-marketplace/v/Pimzino.spec-workflow-mcp)](https://marketplace.visualstudio.com/items?itemName=Pimzino.spec-workflow-mcp)
+[![npm version](https://img.shields.io/npm/v/@insist211314/spec-workflow-mcp)](https://www.npmjs.com/package/@insist211314/spec-workflow-mcp)
 
 A Model Context Protocol (MCP) server that provides structured spec-driven development workflow tools for AI-assisted software development, featuring a real-time web dashboard and VSCode extension for monitoring and managing your project's progress directly in your development environment.
 
-<a href="https://glama.ai/mcp/servers/@Pimzino/spec-workflow-mcp">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/@Pimzino/spec-workflow-mcp/badge" alt="Spec Workflow MCP server" />
+<a href="https://glama.ai/mcp/servers/@insist211314/spec-workflow-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@insist211314/spec-workflow-mcp/badge" alt="Spec Workflow MCP server" />
 </a>
 
 ## 📺 Showcase
@@ -24,12 +23,6 @@ A Model Context Protocol (MCP) server that provides structured spec-driven devel
 </a>
 
 *Explore the real-time dashboard: view specs, track progress, navigate documents, and monitor your development workflow.*
-
----
-
-## ☕ Support This Project
-
-<a href="https://buymeacoffee.com/Pimzino" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ---
 
